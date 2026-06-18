@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>점심 메뉴 추천! 룰렛 돌리기</title>
+    <!-- Tailwind CSS (귀엽고 트렌디한 디자인) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: 동글동글 귀여운 'Jua' 폰트 및 'Noto Sans KR' -->
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Confetti (종이꽃가루 효과 공식 CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #FFFBEB; /* 연한 크림 노란색 */
+        }
+        .font-jua {
+            font-family: 'Jua', sans-serif;
+        }
+        /* 터치 시 드래그 잔상이 남는 웹 기본 제스처 방지 */
+        canvas {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        /* 통통 튀는 애니메이션 효과 */
+        @keyframes pop-bounce {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.1); }
+            70% { transform: scale(0.9); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .pop-animation {
+            animation: pop-bounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between min-h-screen p-4 overflow-x-hidden">
+
+    <!-- 상단 타이틀 영역 -->
+    <header class="text-center mt-4 mb-2 w-full max-w-md">
+        <span class="inline-block bg-orange-100 text-orange-600 text-sm font-bold px-3 py-1 rounded-full mb-1 border border-orange-200 shadow-sm animate-pulse">
+            🍕 오늘 뭐 먹지? 고민 해결! 🍔
+        </span>
+        <h1 class="text-4xl font-jua text-orange-600 drop-shadow-[0_2px_2px_rgba(249,115,22,0.3)]">
+            점심 메뉴 추천 룰렛
+        </h1>
+        <p class="text-xs text-amber-700/80 mt-1">원판을 터치해 휙 넘기거나 돌리기 버튼을 누르세요!</p>
+    </header>
+
+    <!-- 실시간 멀티플레이 연동 제어 카드 -->
+    <div class="bg-amber-100/90 border-2 border-amber-300 rounded-2xl p-4 w-full max-w-md mb-4 shadow-sm transition-all">
+        <div class="flex items-center justify-between mb-2">
+            <span class="font-jua text-amber-900 text-sm flex items-center gap-1">
+                👥 친구들과 실시간 같이 돌리기
+            </span>
+            <span id="room-status-badge" class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-700 transition-colors">
+                연결 중... ⏳
+            </span>
+        </div>
+        
+        <!-- 방 미접속 상태 UI -->
+        <div id="room-offline-ui" class="flex gap-2">
+            <button id="create-room-btn" disabled class="font-jua flex-1 py-2 text-sm bg-orange-500 text-white rounded-xl shadow-[0_3px_0_#C2410C] hover:bg-orange-600 active:translate-y-0.5 active:shadow-[0_1px_0_#C2410C] transition-all disabled:opacity-50 disabled:pointer-events-none">
+                방 만들기
+            </button>
+            <div class="flex flex-1 gap-1">
+                <input type="number" id="join-room-input" placeholder="방 번호 4자리" class="w-full text-center px-2 py-1.5 text-sm rounded-xl border border-amber-300 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                <button id="join-room-btn" disabled class="font-jua px-4 py-1.5 bg-amber-500 text-white rounded-xl text-sm shadow-[0_3px_0_#B45309] hover:bg-amber-600 active:translate-y-0.5 active:shadow-[0_1px_0_#B45309] transition-all disabled:opacity-50 disabled:pointer-events-none">
+                    참가
+                </button>
+            </div>
+        </div>
+        
+        <!-- 방 접속 성공 상태 UI -->
+        <div id="room-online-ui" class="hidden flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <span class="text-xs text-amber-800">접속한 방 번호:</span>
+                <span id="active-room-code" class="font-jua text-lg bg-white border-2 border-orange-400 text-orange-600 px-3 py-0.5 rounded-xl animate-bounce">0000</span>
+            </div>
+            <button id="leave-room-btn" class="font-jua px-3 py-1.5 bg-red-100 text-red-600 rounded-xl text-xs hover:bg-red-200 transition">
+                방 나가기
+            </button>
+        </div>
+    </div>
+
+    <!-- 게임 본체 영역 -->
+    <main class="flex-1 flex flex-col items-center justify-center w-full max-w-md relative">
+        
+        <!-- 원판 회전 컨테이너 -->
+        <div class="relative w-full aspect-square max-w-[340px] xs:max-w-[360px] flex items-center justify-center">
+            
+            <!-- 상단 바늘/포인터 (돌아갈 때 물리적으로 흔들리는 앵글 반영) -->
+            <div id="pointer-wrapper" class="absolute -top-1 z-30 transition-transform duration-75 origin-top" style="transform: rotate(0deg);">
+                <svg width="45" height="50" viewBox="0 0 45 50" fill="none" xmlns="http://www.w3.org/2000/svg" class="drop-shadow-md">
+                    <path d="M22.5 50L45 10C45 4.47715 40.5228 0 35 0H10C4.47715 0 0 4.47715 0 10L22.5 50Z" fill="#EA580C"/>
+                    <path d="M22.5 38L35 10C35 7.23858 32.7614 5 30 5H15C12.2386 5 10 7.23858 10 10L22.5 38Z" fill="#FDBA74"/>
+                    <circle cx="22.5" cy="12" r="4" fill="#EA580C"/>
+                </svg>
+            </div>
+
+            <!-- 룰렛 테두리 장식 효과 (반짝반짝 LED 전구 연출) -->
+            <div class="absolute inset-0 rounded-full border-[10px] border-amber-500 bg-amber-400 shadow-[0_10px_25px_rgba(249,115,22,0.4)] z-0">
+                <div class="absolute inset-1 rounded-full border-4 border-dashed border-white/50 animate-[spin_20s_linear_infinite]"></div>
+            </div>
+
+            <!-- 실제 룰렛 캔버스 -->
+            <canvas id="roulette-canvas" width="600" height="600" class="w-[91%] h-[91%] rounded-full z-10 cursor-grab active:cursor-grabbing"></canvas>
+            
+            <!-- 원판 정중앙 캡 -->
+            <div class="absolute w-12 h-12 bg-gradient-to-br from-amber-300 to-orange-600 rounded-full border-4 border-white shadow-lg z-20 flex items-center justify-center">
+                <span class="text-lg">😋</span>
+            </div>
+        </div>
+
+        <!-- 하단 컨트롤 버튼들 -->
+        <div class="mt-6 w-full px-6 flex flex-col gap-3">
+            <!-- 돌리기 왕버튼 -->
+            <button id="spin-btn" class="font-jua w-full py-4 text-2xl text-white bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 rounded-2xl shadow-[0_6px_0_#C2410C] hover:brightness-110 active:translate-y-1 active:shadow-[0_2px_0_#C2410C] transition-all transform tracking-wider">
+                🎯 점심 추천 돌리기!
+            </button>
+
+            <!-- 메뉴 관리 토글 버튼 -->
+            <button id="toggle-edit-btn" class="text-xs text-orange-600/80 font-bold hover:text-orange-700 flex items-center justify-center gap-1 py-1">
+                ⚙️ 점심 후보 메뉴 편집하기
+            </button>
+        </div>
+
+        <!-- 후보 편집창 -->
+        <div id="edit-panel" class="hidden w-full bg-orange-50/95 border-2 border-orange-200 rounded-2xl p-4 mt-3 shadow-inner max-h-[220px] overflow-y-auto">
+            <h3 class="font-jua text-sm text-orange-800 mb-2 flex justify-between items-center">
+                <span>📋 메뉴 리스트 (최소 2개 ~ 최대 12개)</span>
+                <span id="menu-count" class="text-xs text-orange-600 bg-white px-2 py-0.5 rounded-full border">6개</span>
+            </h3>
+            
+            <!-- 추가 인풋창 -->
+            <div class="flex gap-2 mb-3">
+                <input type="text" id="new-menu-input" maxlength="8" placeholder="새 점심 메뉴 입력" class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                <button id="add-menu-btn" class="font-jua px-4 py-1.5 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700 transition">추가</button>
+            </div>
+
+            <!-- 현재 메뉴 태그 목록 -->
+            <div id="menu-tags-container" class="flex flex-wrap gap-2">
+                <!-- 동적으로 생성됨 -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 푸터 바 -->
+    <footer class="text-center text-[10px] text-amber-800/60 pb-2 mt-4">
+        © 2026 점심추천원판. 베테랑 프론트엔드 제작.
+    </footer>
+
+    <!-- 당첨 팝업 모달창 -->
+    <div id="result-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6 hidden backdrop-blur-sm">
+        <div class="bg-white rounded-3xl w-full max-w-sm p-6 text-center border-4 border-amber-400 shadow-[0_20px_50px_rgba(249,115,22,0.3)] pop-animation relative overflow-hidden">
+            
+            <div class="absolute -top-12 -left-12 w-24 h-24 bg-yellow-200 rounded-full opacity-30"></div>
+            <div class="absolute -bottom-12 -right-12 w-24 h-24 bg-orange-200 rounded-full opacity-30"></div>
+
+            <div class="relative z-10">
+                <div class="text-5xl mb-3 animate-bounce">✨🎉🥳🎉✨</div>
+                
+                <h4 class="text-sm font-bold text-amber-600 tracking-wider uppercase mb-1">오늘 당신의 럭키 점심메뉴</h4>
+                
+                <div class="my-4 py-3 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-2xl border-2 border-orange-100">
+                    <span id="winning-emoji" class="text-4xl block mb-2">🍕</span>
+                    <span id="winning-menu-text" class="text-4xl font-jua text-orange-600 drop-shadow-sm tracking-wide">
+                        짜장면
+                    </span>
+                </div>
+
+                <p class="text-sm text-gray-500 mb-6">
+                    고민할 시간은 끝났다!<br>
+                    <span class="text-orange-500 font-bold">오점무(오늘 점심 무조건 이것)</span>로 맛있게 드세요!
+                </p>
+
+                <div class="flex gap-2">
+                    <button id="modal-close-btn" class="font-jua flex-1 py-3 bg-orange-600 text-white rounded-xl shadow-md hover:bg-orange-700 active:translate-y-0.5 transition-all text-lg">
+                        👍 맛있게 먹기!
+                    </button>
+                    <button id="modal-retry-btn" class="font-jua px-4 py-3 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 active:translate-y-0.5 transition-all">
+                        🔄 재도전
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 스크립트 영역 (기존 로직 및 물리 동기화 최적화) -->
+    <script>
+        // 1. 기본 메뉴 및 상호작용 매핑
+        const emojiMap = {
+            "짜장면": "🍜", "피자": "🍕", "김밥": "🍙", "치킨": "🍗", "떡볶이": "🌶️",
+            "햄버거": "🍔", "돈까스": "🥩", "삼겹살": "🥓", "초밥": "🍣", "라면": "🍜",
+            "샐러드": "🥗", "부대찌개": "🍲", "국밥": "🥣", "파스타": "🍝", "샌드위치": "🥪"
+        };
+
+        let menuList = ["짜장면", "피자", "김밥", "치킨", "떡볶이", "햄버거"];
+        let activeRoomRef = null; // 현재 연동된 파이어스토어 문서 참조 객체
+
+        // 2. 오디오 신디사이저
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playTickSound(frequency = 400) {
+            try {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.04);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.04);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.05);
+            } catch (e) {}
+        }
+
+        function playSuccessFanfare() {
+            try {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, index) => {
+                    setTimeout(() => {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start();
+                        osc.stop(audioCtx.currentTime + 0.35);
+                    }, index * 80);
+                });
+            } catch (e) {}
+        }
+
+        // 3. 캔버스 및 물리 엔진
+        const canvas = document.getElementById('roulette-canvas');
+        const ctx = canvas.getContext('2d');
+        const pointerWrapper = document.getElementById('pointer-wrapper');
+
+        let currentAngle = 0;
+        let isSpinning = false;
+        let isDragging = false;
+        let velocity = 0;
+        const friction = 0.985;
+        const stopThreshold = 0.0015;
+
+        // 드래그 물리 트래킹
+        let startAngle = 0;
+        let lastAngle = 0;
+        let dragVelocities = [];
+        let lastMoveTime = 0;
+
+        const colors = ['#FDBA74', '#FEF08A', '#F97316', '#FEF08A', '#F59E0B', '#FFEDD5', '#EA580C', '#FEF9C3'];
+
+        function getEmoji(menu) {
+            return emojiMap[menu] || "🍴";
+        }
+
+        function drawRoulette() {
+            const size = canvas.width;
+            const center = size / 2;
+            const radius = center - 12;
+            const sliceAngle = (Math.PI * 2) / menuList.length;
+
+            ctx.clearRect(0, 0, size, size);
+
+            ctx.shadowColor = "rgba(0,0,0,0.08)";
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.arc(center, center, radius + 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            for (let i = 0; i < menuList.length; i++) {
+                const angle = currentAngle + i * sliceAngle;
+                ctx.beginPath();
+                ctx.moveTo(center, center);
+                ctx.arc(center, center, radius, angle, angle + sliceAngle);
+                ctx.closePath();
+                ctx.fillStyle = colors[i % colors.length];
+                ctx.fill();
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+
+                ctx.save();
+                ctx.translate(center, center);
+                ctx.rotate(angle + sliceAngle / 2);
+                ctx.fillStyle = '#374151';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+                ctx.font = 'bold 36px "Jua", "Noto Sans KR"';
+
+                const text = menuList[i];
+                const emoji = getEmoji(text);
+                ctx.fillText(`${text} ${emoji}`, radius - 35, 0);
+                ctx.restore();
+            }
+
+            ctx.beginPath();
+            ctx.arc(center, center, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = '#F59E0B';
+            ctx.lineWidth = 8;
+            ctx.stroke();
+        }
+
+        // 4. 물리 동기화 프레임 업데이트 루프 (고정 타임스텝 기법 적용)
+        let lastTickAngleIndex = -1;
+        let accumTime = 0;
+        let lastFrameTime = 0;
+        const timeStep = 1 / 60; // 초당 60프레임 기준 고정 물리 시뮬레이션
+
+        function updatePhysics() {
+            if (isDragging) return;
+
+            if (isSpinning) {
+                const now = performance.now();
+                let delta = (now - lastFrameTime) / 1000;
+                lastFrameTime = now;
+
+                if (delta > 0.1) delta = 0.1; // 브라우저 백그라운드 전환 시 폭주 방지
+                accumTime += delta;
+
+                let tickTriggered = false;
+
+                // 기기 주사율(60Hz, 120Hz)에 영향받지 않도록 물리 연산 고정 회수 반복
+                while (accumTime >= timeStep) {
+                    velocity *= friction;
+                    currentAngle += velocity;
+                    accumTime -= timeStep;
+
+                    const sliceAngle = (Math.PI * 2) / menuList.length;
+                    const relativePointerAngle = -Math.PI / 2 - currentAngle;
+                    const currentTickIndex = Math.floor((relativePointerAngle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) / sliceAngle);
+
+                    if (currentTickIndex !== lastTickAngleIndex) {
+                        lastTickAngleIndex = currentTickIndex;
+                        tickTriggered = true;
+                    }
+                }
+
+                if (tickTriggered) {
+                    playTickSound(350 + (velocity * 200));
+                    pointerWrapper.style.transform = `rotate(-15deg)`;
+                    setTimeout(() => { pointerWrapper.style.transform = `rotate(0deg)`; }, 50);
+                }
+
+                drawRoulette();
+
+                if (velocity < stopThreshold) {
+                    isSpinning = false;
+                    velocity = 0;
+                    determineWinner();
+                    
+                    // 스핀이 종료되면 방 상태를 다시 대기(idle) 상태로 리셋
+                    if (activeRoomRef) {
+                        window.syncRoomStateToCloud(activeRoomRef, { status: 'idle' });
+                    }
+                } else {
+                    requestAnimationFrame(updatePhysics);
+                }
+            }
+        }
+
+        // 5. 당첨 메뉴 판단
+        function determineWinner() {
+            const sliceAngle = (Math.PI * 2) / menuList.length;
+            let relativeAngle = -Math.PI / 2 - currentAngle;
+            
+            while (relativeAngle < 0) {
+                relativeAngle += Math.PI * 2;
+            }
+            relativeAngle = relativeAngle % (Math.PI * 2);
+
+            const winnerIndex = Math.floor(relativeAngle / sliceAngle) % menuList.length;
+            const winningMenu = menuList[winnerIndex];
+
+            playSuccessFanfare();
+            triggerConfettiExplosion();
+
+            setTimeout(() => {
+                const modal = document.getElementById('result-modal');
+                document.getElementById('winning-menu-text').textContent = winningMenu;
+                document.getElementById('winning-emoji').textContent = getEmoji(winningMenu);
+                modal.classList.remove('hidden');
+            }, 600);
+        }
+
+        function triggerConfettiExplosion() {
+            const duration = 2.5 * 1000;
+            const animationEnd = Date.now() + duration;
+            const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
+
+            function randomInRange(min, max) {
+                return Math.random() * (max - min) + min;
+            }
+
+            const interval = setInterval(function() {
+                const timeLeft = animationEnd - Date.now();
+                if (timeLeft <= 0) return clearInterval(interval);
+
+                const particleCount = 50 * (timeLeft / duration);
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+            }, 250);
+        }
+
+        // 6. 스핀 이벤트 트리거 (실시간 싱크 적용)
+        async function triggerSpin() {
+            if (isSpinning || isDragging) return;
+            
+            if (activeRoomRef) {
+                // 실시간 동기화 방 모드일 때: 다른 기기에 회전 신호 전송
+                const startVel = 0.45 + Math.random() * 0.35;
+                const startAngle = currentAngle;
+                
+                await window.syncRoomStateToCloud(activeRoomRef, {
+                    status: 'spinning',
+                    velocity: startVel,
+                    startAngle: startAngle,
+                    triggerTime: Date.now()
+                });
+            } else {
+                // 단독 로컬 모드일 때
+                velocity = 0.45 + Math.random() * 0.35;
+                isSpinning = true;
+                lastTickAngleIndex = -1;
+                lastFrameTime = performance.now();
+                accumTime = 0;
+                updatePhysics();
+            }
+        }
+
+        // 7. 터치 및 드래그 제어
+        function getEventAngle(e) {
+            const rect = canvas.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return Math.atan2(clientY - cy, clientX - cx);
+        }
+
+        function handleDragStart(e) {
+            if (isSpinning) return;
+            isDragging = true;
+            startAngle = getEventAngle(e);
+            lastAngle = currentAngle;
+            dragVelocities = [];
+            lastMoveTime = Date.now();
+        }
+
+        function handleDragMove(e) {
+            if (!isDragging) return;
+            const currentEventAngle = getEventAngle(e);
+            const deltaAngle = currentEventAngle - startAngle;
+            currentAngle = lastAngle + deltaAngle;
+            
+            const now = Date.now();
+            const timeDiff = now - lastMoveTime;
+            if (timeDiff > 0) {
+                const diffAngle = currentEventAngle - (dragVelocities.length > 0 ? dragVelocities[dragVelocities.length - 1].angle : startAngle);
+                dragVelocities.push({ speed: diffAngle / timeDiff, time: now, angle: currentEventAngle });
+                dragVelocities = dragVelocities.filter(v => now - v.time < 100);
+            }
+            lastMoveTime = now;
+            drawRoulette();
+        }
+
+        async function handleDragEnd() {
+            if (!isDragging) return;
+            isDragging = false;
+
+            if (dragVelocities.length > 0) {
+                const avgSpeed = dragVelocities.reduce((acc, val) => acc + val.speed, 0) / dragVelocities.length;
+                if (Math.abs(avgSpeed) > 0.005) {
+                    const startVel = Math.min(Math.max(avgSpeed * 16, -0.95), 0.95);
+                    const startAngle = currentAngle;
+
+                    if (activeRoomRef) {
+                        await window.syncRoomStateToCloud(activeRoomRef, {
+                            status: 'spinning',
+                            velocity: startVel,
+                            startAngle: startAngle,
+                            triggerTime: Date.now()
+                        });
+                    } else {
+                        velocity = startVel;
+                        isSpinning = true;
+                        lastTickAngleIndex = -1;
+                        lastFrameTime = performance.now();
+                        accumTime = 0;
+                        updatePhysics();
+                    }
+                    return;
+                }
+            }
+            drawRoulette();
+        }
+
+        canvas.addEventListener('mousedown', handleDragStart);
+        window.addEventListener('mousemove', handleDragMove);
+        window.addEventListener('mouseup', handleDragEnd);
+        canvas.addEventListener('touchstart', handleDragStart, { passive: true });
+        window.addEventListener('touchmove', handleDragMove, { passive: false });
+        window.addEventListener('touchend', handleDragEnd);
+
+        // 8. 후보 메뉴 UI 렌더링
+        const menuTagsContainer = document.getElementById('menu-tags-container');
+        const newMenuInput = document.getElementById('new-menu-input');
+        const addMenuBtn = document.getElementById('add-menu-btn');
+        const menuCountEl = document.getElementById('menu-count');
+
+        function renderMenuTags() {
+            menuTagsContainer.innerHTML = '';
+            menuList.forEach((menu, index) => {
+                const tag = document.createElement('div');
+                tag.className = "flex items-center gap-1 bg-white border border-orange-200 text-orange-950 font-medium px-3 py-1 rounded-xl shadow-sm text-sm";
+                tag.innerHTML = `
+                    <span>${getEmoji(menu)} ${menu}</span>
+                    <button class="text-orange-400 hover:text-red-500 ml-1 focus:outline-none" onclick="removeMenu(${index})">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                `;
+                menuTagsContainer.appendChild(tag);
+            });
+            menuCountEl.textContent = `${menuList.length}개`;
+            drawRoulette();
+        }
+
+        window.removeMenu = async function(index) {
+            if (menuList.length <= 2) {
+                alertCustom("최소 2개의 메뉴는 등록되어 있어야 합니다!");
+                return;
+            }
+            menuList.splice(index, 1);
+            renderMenuTags();
+            
+            // 실시간 클라우드 전송
+            if (activeRoomRef) {
+                await window.syncRoomStateToCloud(activeRoomRef, { menuList: menuList });
+            }
+        };
+
+        addMenuBtn.addEventListener('click', async () => {
+            const val = newMenuInput.value.trim();
+            if (!val) return;
+            if (menuList.includes(val)) {
+                alertCustom("이미 존재하는 메뉴입니다!");
+                return;
+            }
+            if (menuList.length >= 12) {
+                alertCustom("메뉴 후보는 최대 12개까지만 추가할 수 있습니다!");
+                return;
+            }
+            menuList.push(val);
+            newMenuInput.value = '';
+            renderMenuTags();
+
+            // 실시간 클라우드 전송
+            if (activeRoomRef) {
+                await window.syncRoomStateToCloud(activeRoomRef, { menuList: menuList });
+            }
+        });
+
+        newMenuInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') addMenuBtn.click();
+        });
+
+        function alertCustom(message) {
+            const bubble = document.createElement('div');
+            bubble.className = "fixed top-12 left-1/2 -translate-x-1/2 bg-amber-500 border-2 border-white text-white font-bold px-6 py-3 rounded-2xl shadow-xl z-50 text-sm animate-bounce text-center";
+            bubble.textContent = message;
+            document.body.appendChild(bubble);
+            setTimeout(() => bubble.remove(), 2500);
+        }
+
+        // 9. 방 제어 시 룰렛 UI 스위칭 다이어리
+        let lastTriggerTime = 0;
+
+        window.getMenuList = () => menuList;
+
+        window.syncRoomData = (data) => {
+            // 다른 기기에서 수정한 메뉴 리스트 실시간 동기화
+            if (JSON.stringify(data.menuList) !== JSON.stringify(menuList) && !isSpinning) {
+                menuList = data.menuList;
+                renderMenuTags();
+            }
+
+            // 다른 기기에서 시작한 룰렛 회전 이벤트 동기화
+            if (data.status === 'spinning' && data.triggerTime !== lastTriggerTime) {
+                lastTriggerTime = data.triggerTime;
+                
+                currentAngle = data.startAngle;
+                velocity = data.velocity;
+                isSpinning = true;
+                lastTickAngleIndex = -1;
+                
+                lastFrameTime = performance.now();
+                accumTime = 0;
+                updatePhysics();
+            }
+        };
+
+        window.setRoomActive = (roomCode, roomRef) => {
+            activeRoomRef = roomRef;
+            document.getElementById('active-room-code').textContent = roomCode;
+            document.getElementById('room-offline-ui').classList.add('hidden');
+            document.getElementById('room-online-ui').classList.remove('hidden');
+            
+            const badge = document.getElementById('room-status-badge');
+            badge.textContent = "실시간 공유 중 🟢";
+            badge.className = "text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 transition-colors animate-pulse";
+            alertCustom(`방 번호 [ ${roomCode} ] 에 정상 연동되었습니다!`);
+        };
+
+        window.setRoomInactive = () => {
+            activeRoomRef = null;
+            document.getElementById('room-offline-ui').classList.remove('hidden');
+            document.getElementById('room-online-ui').classList.add('hidden');
+            
+            const badge = document.getElementById('room-status-badge');
+            badge.textContent = "로컬 모드 🏠";
+            badge.className = "text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-700 transition-colors";
+            alertCustom("실시간 공유 방에서 퇴장했습니다.");
+        };
+
+        // UI 바인딩
+        document.getElementById('spin-btn').addEventListener('click', triggerSpin);
+        
+        const editPanel = document.getElementById('edit-panel');
+        document.getElementById('toggle-edit-btn').addEventListener('click', () => {
+            editPanel.classList.toggle('hidden');
+        });
+
+        const modal = document.getElementById('result-modal');
+        document.getElementById('modal-close-btn').addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+        document.getElementById('modal-retry-btn').addEventListener('click', () => {
+            modal.classList.add('hidden');
+            setTimeout(triggerSpin, 300);
+        });
+
+        // 초기 구동
+        renderMenuTags();
+        drawRoulette();
+
+        window.addEventListener('resize', () => {
+            drawRoulette();
+        });
+    </script>
+
+    <!-- 10. 파이어베이스 모듈 스크립트 (실시간 멀티플레이 룸 생성/참여 연동) -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
+        // 전역 환경 설정에서 Firebase Config 로드
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        let user = null;
+        let unsubscribeRoom = null;
+
+        // 익명 인증 초기화
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (e) {
+                console.error("Auth Failed:", e);
+                try { await signInAnonymously(auth); } catch(err) {}
+            }
+        };
+
+        // 로그인 여부에 따른 기능 활성화 제어
+        onAuthStateChanged(auth, (currentUser) => {
+            user = currentUser;
+            if (user) {
+                document.getElementById('create-room-btn').disabled = false;
+                document.getElementById('join-room-btn').disabled = false;
+                
+                const badge = document.getElementById('room-status-badge');
+                badge.textContent = "로컬 모드 🏠";
+                badge.className = "text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-700 transition-colors";
+            }
+        });
+
+        initAuth();
+
+        // [방 만들기] 기능 구현
+        async function createRoom() {
+            if (!user) {
+                window.alertCustom("초기 설정 중입니다. 잠시만 기다려 주세요.");
+                return;
+            }
+            // 4자리 고유 번호 생성
+            const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+
+            try {
+                await setDoc(roomRef, {
+                    roomCode: roomCode,
+                    menuList: window.getMenuList(),
+                    status: 'idle',
+                    velocity: 0,
+                    startAngle: 0,
+                    triggerTime: 0,
+                    creatorId: user.uid
+                });
+                joinRoomByCode(roomCode);
+            } catch (e) {
+                console.error(e);
+                window.alertCustom("방을 만드는 데 실패했습니다. 다시 시도해 주세요.");
+            }
+        }
+
+        // [방 참가] 기능 구현
+        async function joinRoomByCode(roomCode) {
+            if (!user) return;
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+
+            try {
+                const snap = await getDoc(roomRef);
+                if (!snap.exists()) {
+                    window.alertCustom("방 번호를 다시 확인해 주세요! 존재하지 않는 방입니다.");
+                    return;
+                }
+
+                // 기존 연동 리스너 해제
+                if (unsubscribeRoom) {
+                    unsubscribeRoom();
+                }
+
+                // 파이어스토어 문서 실시간 리스너 작동 (에러 핸들러 포함)
+                unsubscribeRoom = onSnapshot(roomRef, (snapshot) => {
+                    if (!snapshot.exists()) return;
+                    window.syncRoomData(snapshot.data());
+                }, (error) => {
+                    console.error("Room Sync Error:", error);
+                    window.alertCustom("연동 중 네트워크 문제가 발생했습니다.");
+                });
+
+                window.setRoomActive(roomCode, roomRef);
+            } catch (e) {
+                console.error(e);
+                window.alertCustom("방 참가 중 오류가 발생했습니다.");
+            }
+        }
+
+        // 실시간 클라우드 값 업데이트 전송 함수
+        async function syncRoomStateToCloud(roomRef, updatePayload) {
+            if (!user || !roomRef) return;
+            try {
+                await updateDoc(roomRef, updatePayload);
+            } catch (e) {
+                console.error("Cloud Sync Failed:", e);
+            }
+        }
+
+        // 버튼 바인딩
+        document.getElementById('create-room-btn').addEventListener('click', createRoom);
+        
+        document.getElementById('join-room-btn').addEventListener('click', () => {
+            const inputVal = document.getElementById('join-room-input').value.trim();
+            if (inputVal.length !== 4) {
+                window.alertCustom("방 번호 4자리를 정확하게 입력해 주세요!");
+                return;
+            }
+            joinRoomByCode(inputVal);
+        });
+
+        document.getElementById('leave-room-btn').addEventListener('click', () => {
+            if (unsubscribeRoom) {
+                unsubscribeRoom();
+                unsubscribeRoom = null;
+            }
+            window.setRoomInactive();
+        });
+
+        // 전역 범위 연결
+        window.syncRoomStateToCloud = syncRoomStateToCloud;
+    </script>
+</body>
+</html>
